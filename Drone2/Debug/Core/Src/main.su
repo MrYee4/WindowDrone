@@ -1,0 +1,11 @@
+../Core/Src/main.c:89:5:main	304	static
+../Core/Src/main.c:186:6:SystemClock_Config	96	static
+../Core/Src/main.c:236:13:MX_I2C1_Init	8	static
+../Core/Src/main.c:284:13:MX_TIM2_Init	40	static
+../Core/Src/main.c:329:13:MX_USART2_UART_Init	8	static
+../Core/Src/main.c:364:13:MX_GPIO_Init	24	static
+../Core/Src/main.c:380:6:MPU_6050_Init	32	static
+../Core/Src/main.c:415:6:MPU_Get_Accel	288	static
+../Core/Src/main.c:444:6:MPU_Get_Gyro	312	static
+../Core/Src/main.c:473:6:Get_Pos	408	static
+../Core/Src/main.c:535:6:Error_Handler	4	static,ignoring_inline_asm
