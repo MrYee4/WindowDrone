@@ -49,7 +49,8 @@ TIM_HandleTypeDef htim16;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-
+uint8_t ESC_ON;
+uint8_t TIMER_COUNT;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -78,6 +79,8 @@ int main(void)
   /* USER CODE BEGIN 1 */
   uint16_t raw;
   char msg[10];
+  TIMER_COUNT = 0;
+  ESC_ON = 100;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -106,7 +109,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   HAL_ADC_Start(&hadc1);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-  //HAL_TIM_Base_Start_IT(&htim16);
+  HAL_TIM_Base_Start_IT(&htim16);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -115,32 +118,8 @@ int main(void)
   //HAL_Delay(5000);
   while (1)
   {
-	int x = 0;
-	while (x < 500)
-	{
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
-	  HAL_Delay(2);
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 0);
-	  HAL_Delay(18);
-	  x = x + 1;
-	}
-	while(x > 0)
-	{
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
-	  HAL_Delay(1);
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 0);
-	  HAL_Delay(19);
-	  x = x - 1;
-	}
-	while(1)
-	{
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
-	  HAL_Delay(1.2);
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 0);
-	  HAL_Delay(18.8);
-	}
-
-	/*while(CH1_DC < 65535)
+	  /*
+	while(CH1_DC < 65535)
 	{
 	  TIM4->CCR1 = CH1_DC;
 	  CH1_DC += 70;
@@ -151,12 +130,10 @@ int main(void)
 	  TIM4->CCR1 = CH1_DC;
 	  CH1_DC -= 70;
 	  HAL_Delay(1);
-	}*/
+	}
 	// Test: Set GPIO pin high
-
-
-	/*
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_SET);
+	 *
+	 */
 
 	// Get ADC value
 	HAL_ADC_Start(&hadc1);
@@ -167,19 +144,47 @@ int main(void)
 	  raw = 3319;
 	}
 
-	// Test: Set GPIO pin low
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
+	if (raw > 3000)
+	{
+		ESC_ON = 109;
+	}
+	else if (raw > 2500)
+	{
+		ESC_ON = 108;
+	}
+	else if (raw > 2000)
+	{
+		ESC_ON = 107;
+	}
+	else if (raw > 1500)
+	{
+		ESC_ON = 106;
+	}
+	else if (raw > 1000)
+	{
+		ESC_ON = 105;
+	}
+	else if (raw > 500)
+	{
+		ESC_ON = 104;
+	}
+	else if (raw > 0)
+	{
+		ESC_ON = 103;
+	}
+	else
+	{
+		ESC_ON = 100;
+	}
 
 	// Convert to string and print
 	sprintf(msg, "%hu\r\n", raw);
 	HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
 
 
-	TIM4->CCR1 = raw;
+	//TIM4->CCR1 = raw;
 	// Pretend we have to do something else for a while
-	HAL_Delay(10);
-
-	*/
+	//HAL_Delay(10);
 
     /* USER CODE END WHILE */
 
@@ -414,9 +419,9 @@ static void MX_TIM16_Init(void)
 
   /* USER CODE END TIM16_Init 1 */
   htim16.Instance = TIM16;
-  htim16.Init.Prescaler = 1;
+  htim16.Init.Prescaler = 0;
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = 3999;
+  htim16.Init.Period = 799;
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim16.Init.RepetitionCounter = 0;
   htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -519,9 +524,22 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   // Check which version of the timer triggered this callback and toggle LED
   if (htim == &htim16)
   {
-    HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
-    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 0);
+	if (TIMER_COUNT == 2000)
+	{
+		TIMER_COUNT = 0;
+	}
+	if (TIMER_COUNT == 0)
+	{
+		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
+	}
+	else if (TIMER_COUNT == ESC_ON)
+	{
+		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
+		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 0);
+	}
+
+    TIMER_COUNT += 1;
   }
 }
 
