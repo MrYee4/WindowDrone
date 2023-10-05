@@ -42,15 +42,16 @@
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
 
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
-TIM_HandleTypeDef htim16;
 
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 uint8_t ESC_ON;
 uint8_t TIMER_COUNT;
+uint32_t pulse_width;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,8 +61,10 @@ static void MX_USART2_UART_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM3_Init(void);
-static void MX_TIM16_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
+void Get_Pulses(void);
 void Send_Pulse(int length);
 /* USER CODE END PFP */
 
@@ -77,7 +80,7 @@ void Send_Pulse(int length);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  uint16_t raw;
+  uint16_t throttle = 0;
   char msg[10];
   TIMER_COUNT = 0;
   ESC_ON = 100;
@@ -105,11 +108,11 @@ int main(void)
   MX_ADC1_Init();
   MX_TIM4_Init();
   MX_TIM3_Init();
-  MX_TIM16_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   HAL_ADC_Start(&hadc1);
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
-  HAL_TIM_Base_Start_IT(&htim16);
+  HAL_TIM_Base_Start(&htim2);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -138,47 +141,9 @@ int main(void)
 	// Get ADC value
 	HAL_ADC_Start(&hadc1);
  	HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
-	raw = HAL_ADC_GetValue(&hadc1);
-	if (raw > 3319)
-	{
-	  raw = 3319;
-	}
-
-	if (raw > 3000)
-	{
-		ESC_ON = 109;
-	}
-	else if (raw > 2500)
-	{
-		ESC_ON = 108;
-	}
-	else if (raw > 2000)
-	{
-		ESC_ON = 107;
-	}
-	else if (raw > 1500)
-	{
-		ESC_ON = 106;
-	}
-	else if (raw > 1000)
-	{
-		ESC_ON = 105;
-	}
-	else if (raw > 500)
-	{
-		ESC_ON = 104;
-	}
-	else if (raw > 0)
-	{
-		ESC_ON = 103;
-	}
-	else
-	{
-		ESC_ON = 100;
-	}
 
 	// Convert to string and print
-	sprintf(msg, "%hu\r\n", raw);
+	sprintf(msg, "%lu\r\n", pulse_width);
 	HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
 
 
@@ -310,6 +275,51 @@ static void MX_ADC1_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 1600000-1;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
   * @brief TIM3 Initialization Function
   * @param None
   * @retval None
@@ -330,7 +340,7 @@ static void MX_TIM3_Init(void)
   htim3.Instance = TIM3;
   htim3.Init.Prescaler = 9999;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 1599;
+  htim3.Init.Period = 159;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -404,38 +414,6 @@ static void MX_TIM4_Init(void)
 }
 
 /**
-  * @brief TIM16 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM16_Init(void)
-{
-
-  /* USER CODE BEGIN TIM16_Init 0 */
-
-  /* USER CODE END TIM16_Init 0 */
-
-  /* USER CODE BEGIN TIM16_Init 1 */
-
-  /* USER CODE END TIM16_Init 1 */
-  htim16.Instance = TIM16;
-  htim16.Init.Prescaler = 0;
-  htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim16.Init.Period = 799;
-  htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim16.Init.RepetitionCounter = 0;
-  htim16.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim16) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM16_Init 2 */
-
-  /* USER CODE END TIM16_Init 2 */
-
-}
-
-/**
   * @brief USART2 Initialization Function
   * @param None
   * @retval None
@@ -488,10 +466,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, LD2_Pin|GPIO_PIN_10, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_10, GPIO_PIN_RESET);
 
   /*Configure GPIO pin : B1_Pin */
   GPIO_InitStruct.Pin = B1_Pin;
@@ -501,17 +476,20 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : PC0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LD2_Pin PA10 */
-  GPIO_InitStruct.Pin = LD2_Pin|GPIO_PIN_10;
+  /*Configure GPIO pin : PA10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
@@ -522,25 +500,32 @@ static void MX_GPIO_Init(void)
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   // Check which version of the timer triggered this callback and toggle LED
-  if (htim == &htim16)
-  {
-	if (TIMER_COUNT == 2000)
-	{
-		TIMER_COUNT = 0;
-	}
-	if (TIMER_COUNT == 0)
-	{
-		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 1);
-	}
-	else if (TIMER_COUNT == ESC_ON)
-	{
-		HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
-		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0, 0);
-	}
+  ///if (htim == &htim16)
+  //{
+  //  TIMER_COUNT += 1;
+  //}
+}
 
-    TIMER_COUNT += 1;
-  }
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if(GPIO_Pin == GPIO_PIN_0) {
+		Get_Pulses();
+	} else {
+	   __NOP();
+	}
+}
+
+void Get_Pulses(void)
+{
+	uint32_t time_count = TIM2->CNT;
+	pulse_width = 0;
+	while ((TIM2->CNT - time_count) < 160000)
+	{
+		if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_0))
+		{
+			pulse_width += (TIM2->CNT - time_count);
+		}
+	}
 }
 
 void Send_Pulse(int length)
