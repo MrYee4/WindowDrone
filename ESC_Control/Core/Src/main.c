@@ -58,6 +58,7 @@ uint8_t TIMER_COUNT;
 uint32_t Throttle;
 uint32_t Roll;
 uint32_t Pitch;
+uint32_t Yaw;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -132,33 +133,23 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  //TIM4->CCR1 = 3319;
+  int throttle_pwm = 80;
   //HAL_Delay(5000);
   while (1)
   {
-	  /*
-	while(CH1_DC < 65535)
+	TIM2->CCR3 = throttle_pwm;
+	TIM3->CCR4 = throttle_pwm;
+	TIM4->CCR1 = throttle_pwm;
+	TIM15->CCR2 = throttle_pwm;
+	if (Throttle < 400)
 	{
-	  TIM4->CCR1 = CH1_DC;
-	  CH1_DC += 70;
-	  HAL_Delay(1);
+		Throttle = 400;
 	}
-	while(CH1_DC > 0)
-	{
-	  TIM4->CCR1 = CH1_DC;
-	  CH1_DC -= 70;
-	  HAL_Delay(1);
-	}
-	// Test: Set GPIO pin high
-	 *
-	 */
+	throttle_pwm = 80 + ((Throttle - 400) / 5.7);
 
-	// Get ADC value
-	//HAL_ADC_Start(&hadc1);
- 	///HAL_ADC_PollForConversion(&hadc1, HAL_MAX_DELAY);
 
 	// Convert to string and print
-	sprintf(msg, "%lu   %lu   %lu\r\n", Throttle, Roll, Pitch);
+	sprintf(msg, "%lu   %lu   %lu  %lu\r\n", Throttle, Roll, Pitch, Yaw);
 	HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
     //sprintf(msg, "%lu\r\n", TIM16->CNT);
 	//HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
@@ -311,9 +302,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 9999;
+  htim2.Init.Prescaler = 1000-1;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 159;
+  htim2.Init.Period = 1600-1;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -370,9 +361,9 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 9999;
+  htim3.Init.Prescaler = 1000-1;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 159;
+  htim3.Init.Period = 1600-1;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
@@ -428,9 +419,9 @@ static void MX_TIM4_Init(void)
 
   /* USER CODE END TIM4_Init 1 */
   htim4.Instance = TIM4;
-  htim4.Init.Prescaler = 9999;
+  htim4.Init.Prescaler = 1000-1;
   htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim4.Init.Period = 159;
+  htim4.Init.Period = 1600-1;
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
@@ -570,9 +561,9 @@ static void MX_TIM15_Init(void)
 
   /* USER CODE END TIM15_Init 1 */
   htim15.Instance = TIM15;
-  htim15.Init.Prescaler = 9999;
+  htim15.Init.Prescaler = 1000-1;
   htim15.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim15.Init.Period = 159;
+  htim15.Init.Period = 1600-1;
   htim15.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim15.Init.RepetitionCounter = 0;
   htim15.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
@@ -720,6 +711,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : PA4 */
+  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
   /*Configure GPIO pin : PB0 */
   GPIO_InitStruct.Pin = GPIO_PIN_0;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -769,6 +766,7 @@ void Get_Pulses(void)
 	Throttle = 0;
 	Roll = 0;
 	Pitch = 0;
+	Yaw = 0;
 	while ((TIM16->CNT - time_count) < 2400)
 	{
 		if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_0))
@@ -782,6 +780,10 @@ void Get_Pulses(void)
 		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0))
 		{
 			Pitch += 1;
+		}
+		if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4))
+		{
+			Yaw += 1;
 		}
 	}
 	HAL_TIM_Base_Stop(&htim16);
