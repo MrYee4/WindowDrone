@@ -36,7 +36,8 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define Max_Throttle 160
+#define Min_Throttle 80
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -55,10 +56,16 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 uint8_t ESC_ON;
 uint8_t TIMER_COUNT;
-uint32_t Throttle;
-uint32_t Roll;
-uint32_t Pitch;
-uint32_t Yaw;
+
+int Throttle;
+int Roll;
+int Pitch;
+int Yaw;
+
+int FL_Motor;
+int FR_Motor;
+int BL_Motor;
+int BR_Motor;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -134,22 +141,154 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   int throttle_pwm = 80;
+  int roll_pwm = 0;
+  int pitch_pwm = 0;
+  int yaw_pwm = 0;
   //HAL_Delay(5000);
   while (1)
   {
-	TIM2->CCR3 = throttle_pwm;
-	TIM3->CCR4 = throttle_pwm;
-	TIM4->CCR1 = throttle_pwm;
-	TIM15->CCR2 = throttle_pwm;
+	/**************************************************/
+	/**************** reset Control *******************/
+	/**************************************************/
+
+	FL_Motor = 0;
+	FR_Motor = 0;
+	BL_Motor = 0;
+	BR_Motor = 0;
+
+	/**************************************************/
+	/**************** Throttle Control ****************/
+	/**************************************************/
+
 	if (Throttle < 400)
 	{
 		Throttle = 400;
 	}
-	throttle_pwm = 80 + ((Throttle - 400) / 5.7);
+	throttle_pwm = Min_Throttle + ((Throttle - 400) / 5.7);
+	FL_Motor = throttle_pwm;
+	FR_Motor = throttle_pwm;
+	BL_Motor = throttle_pwm;
+	BR_Motor = throttle_pwm;
+
+	/**************************************************/
+	/****************** Roll Control ******************/
+	/**************************************************/
+
+	roll_pwm = ((Roll - 400) / 5.7);
+	if(roll_pwm > 40)
+	{
+		roll_pwm -= 40;
+		if(throttle_pwm + roll_pwm < Max_Throttle)
+		{
+			FL_Motor += roll_pwm;
+			BL_Motor += roll_pwm;
+		}
+		else
+		{
+			FL_Motor = Max_Throttle;
+			BL_Motor = Max_Throttle;
+		}
+	}
+	else if(roll_pwm < 30)
+	{
+		roll_pwm -= 30;
+		roll_pwm *= -1;
+		if(throttle_pwm + roll_pwm < Max_Throttle)
+		{
+			FR_Motor += roll_pwm;
+			BR_Motor += roll_pwm;
+		}
+		else
+		{
+			FR_Motor = Max_Throttle;
+			BR_Motor = Max_Throttle;
+		}
+
+
+	}
+
+	/**************************************************/
+	/****************** Pitch Control *****************/
+	/**************************************************/
+
+	pitch_pwm = ((Pitch - 400) / 5.7);
+	if(pitch_pwm > 40)
+	{
+		pitch_pwm -= 40;
+		if(throttle_pwm + pitch_pwm < Max_Throttle)
+		{
+			BL_Motor += pitch_pwm;
+			BR_Motor += pitch_pwm;
+		}
+		else
+		{
+			BL_Motor = Max_Throttle;
+			BR_Motor = Max_Throttle;
+		}
+	}
+	else if(pitch_pwm < 30)
+	{
+		pitch_pwm -= 30;
+		pitch_pwm *= -1;
+		if(throttle_pwm + pitch_pwm < Max_Throttle)
+		{
+			FL_Motor += pitch_pwm;
+			FR_Motor += pitch_pwm;
+		}
+		else
+		{
+			FL_Motor = Max_Throttle;
+			FR_Motor = Max_Throttle;
+		}
+
+	}
+
+	/**************************************************/
+	/******************* Yaw Control ******************/
+	/**************************************************/
+	yaw_pwm = ((Yaw - 400) / 5.7);
+	if(yaw_pwm > 40)
+	{
+		yaw_pwm -= 40;
+		if(throttle_pwm + yaw_pwm < Max_Throttle)
+		{
+			BL_Motor += yaw_pwm;
+			FR_Motor += yaw_pwm;
+		}
+		else
+		{
+			BL_Motor = Max_Throttle;
+			FR_Motor = Max_Throttle;
+		}
+	}
+	else if(yaw_pwm < 30)
+	{
+		yaw_pwm -= 30;
+		yaw_pwm *= -1;
+		if(throttle_pwm + yaw_pwm < Max_Throttle)
+		{
+			FL_Motor += yaw_pwm;
+			BR_Motor += yaw_pwm;
+		}
+		else
+		{
+			FL_Motor = Max_Throttle;
+			BR_Motor = Max_Throttle;
+		}
+	}
+
+	/**************************************************/
+	/**************** Set Motor Values ****************/
+	/**************************************************/
+
+	TIM2->CCR3 = BR_Motor;
+	TIM3->CCR4 = FL_Motor;
+	TIM4->CCR1 = FR_Motor;
+	TIM15->CCR2 = BL_Motor;
 
 
 	// Convert to string and print
-	sprintf(msg, "%lu   %lu   %lu  %lu\r\n", Throttle, Roll, Pitch, Yaw);
+	sprintf(msg, "%i   %i   %i  %i  %i  %i  %i  %i\r\n", Throttle, pitch_pwm, Pitch, Yaw, FL_Motor, FR_Motor, BL_Motor, BR_Motor);
 	HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
     //sprintf(msg, "%lu\r\n", TIM16->CNT);
 	//HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
@@ -773,17 +912,33 @@ void Get_Pulses(void)
 		{
 			Throttle += 1;
 		}
+		else
+		{
+			Throttle = Throttle;
+		}
 		if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_1))
 		{
 			Roll += 1;
+		}
+		else
+		{
+			Roll = Roll;
 		}
 		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0))
 		{
 			Pitch += 1;
 		}
+		else
+		{
+			Pitch = Pitch;
+		}
 		if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4))
 		{
 			Yaw += 1;
+		}
+		else
+		{
+			Yaw = Yaw;
 		}
 	}
 	HAL_TIM_Base_Stop(&htim16);
