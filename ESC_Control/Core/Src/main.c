@@ -180,8 +180,8 @@ int main(void)
 		roll_pwm -= 40;
 		if(throttle_pwm + roll_pwm < Max_Throttle)
 		{
-			FL_Motor += roll_pwm;
-			BL_Motor += roll_pwm;
+			FL_Motor += (roll_pwm/2);
+			BL_Motor += (roll_pwm/2);
 		}
 		else
 		{
@@ -195,8 +195,8 @@ int main(void)
 		roll_pwm *= -1;
 		if(throttle_pwm + roll_pwm < Max_Throttle)
 		{
-			FR_Motor += roll_pwm;
-			BR_Motor += roll_pwm;
+			FR_Motor += (roll_pwm/2);
+			BR_Motor += (roll_pwm/2);
 		}
 		else
 		{
@@ -217,8 +217,8 @@ int main(void)
 		pitch_pwm -= 40;
 		if(throttle_pwm + pitch_pwm < Max_Throttle)
 		{
-			BL_Motor += pitch_pwm;
-			BR_Motor += pitch_pwm;
+			BL_Motor += (pitch_pwm/2);
+			BR_Motor += (pitch_pwm/2);
 		}
 		else
 		{
@@ -232,8 +232,8 @@ int main(void)
 		pitch_pwm *= -1;
 		if(throttle_pwm + pitch_pwm < Max_Throttle)
 		{
-			FL_Motor += pitch_pwm;
-			FR_Motor += pitch_pwm;
+			FL_Motor += (pitch_pwm/2);
+			FR_Motor += (pitch_pwm/2);
 		}
 		else
 		{
@@ -246,7 +246,7 @@ int main(void)
 	/**************************************************/
 	/******************* Yaw Control ******************/
 	/**************************************************/
-	yaw_pwm = ((Yaw - 400) / 5.7);
+	/*yaw_pwm = ((Yaw - 400) / 5.7);
 	if(yaw_pwm > 40)
 	{
 		yaw_pwm -= 40;
@@ -276,7 +276,7 @@ int main(void)
 			BR_Motor = Max_Throttle;
 		}
 	}
-
+	*/
 	/**************************************************/
 	/**************** Set Motor Values ****************/
 	/**************************************************/
