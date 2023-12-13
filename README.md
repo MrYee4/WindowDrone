@@ -18,16 +18,13 @@ The window drone is a drone that can be assembled and programmed soley by the us
 * MISC Parts: Wires, Standoffs, Solder, BasePlate for Batteries
 
 
-The rest of the parts i.e. ECS's, motors and radio reciver were bought to connect to the NUCLEO Board
-
-
 ## STL FILES
 
 
 STL files are inlcuded in the Drone_STL_Files folder
 
 
-Feel free to use or modify if you wish to use for a project
+> Feel free to use or modify if you wish to use for a project
 
 
 ## Important
