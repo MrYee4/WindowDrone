@@ -15,6 +15,7 @@ The window drone is a drone that can be assembled and programmed soley by the us
 * ESC's: Flycolor 40A
 * Accelerometer: MPU6050
 * capacitor: 1000uF cap
+* MISC Parts: Wires, Standoffs, Solder, BasePlate for Batteries
 
 
 The rest of the parts i.e. ECS's, motors and radio reciver were bought to connect to the NUCLEO Board
