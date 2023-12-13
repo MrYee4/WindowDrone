@@ -9,11 +9,12 @@ The window drone is a drone that can be assembled and programmed soley by the us
 ## Parts List
 
 
-Microcontroller: Nucleo L476RG
-
-Battery: CNHL 4s 1500MAH
-
-Motors: Xing E pro 2207
+* Microcontroller: Nucleo L476RG
+* Battery: CNHL 4s 1500MAH
+* Motors: Xing E pro 2207
+* ESC's: Flycolor 40A
+* Accelerometer: MPU6050
+* capacitor: 1000uF cap
 
 
 The rest of the parts i.e. ECS's, motors and radio reciver were bought to connect to the NUCLEO Board
