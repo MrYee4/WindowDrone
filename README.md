@@ -13,6 +13,9 @@ The window drone is a drone that can be assembled and programmed soley by the us
 * Battery: CNHL 4s 1500MAH
 * Motors: Xing E pro 2207
 * ESC's: Flycolor 40A
+* ELRS Reciver: RP1 Nano Radiomaster
+* ELRS Transmitter: TX12 Radiomaster
+* CRSF to PWM converter: MATEKSYS CRSF to PWM
 * Accelerometer: MPU6050
 * capacitor: 1000uF cap
 * MISC Parts: Wires, Standoffs, Solder, Protoboard, BasePlate for Batteries
