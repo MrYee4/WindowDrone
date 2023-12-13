@@ -21,7 +21,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
+#include <stdio.h>
+#include <math.h>
+#include "Accelerometer_Interface.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,12 +39,13 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define Max_Throttle 160
-#define Min_Throttle 80
+
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 ADC_HandleTypeDef hadc1;
+
+I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
@@ -54,18 +58,13 @@ TIM_HandleTypeDef htim16;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t ESC_ON;
-uint8_t TIMER_COUNT;
+int Remote_Throttle_Command, Remote_Roll_Command, Remote_Pitch_Command, Remote_Yaw_Command;
+int FL_Motor, FR_Motor, BL_Motor, BR_Motor;
 
-int Throttle;
-int Roll;
-int Pitch;
-int Yaw;
+float Positional_Roll, Positional_Pitch, Positional_Yaw;
+float AccelErrorX, AccelErrorY, AccelErrorZ;
 
-int FL_Motor;
-int FR_Motor;
-int BL_Motor;
-int BR_Motor;
+uint8_t Accel_buffer_in[6];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -80,10 +79,15 @@ static void MX_TIM8_Init(void);
 static void MX_TIM15_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_TIM16_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
 void Get_Pulses(void);
 void Send_Pulse(int length);
+void MPU_6050_Init(void);
+void Get_Pos(void);
+void Motor_Adjust_Roll(void);
+void Motor_Adjust_Pitch(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -98,9 +102,7 @@ void Send_Pulse(int length);
 int main(void)
 {
   /* USER CODE BEGIN 1 */
-  char msg[100];
-  TIMER_COUNT = 0;
-  ESC_ON = 100;
+  char msg[300];
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -130,21 +132,34 @@ int main(void)
   MX_TIM15_Init();
   MX_TIM6_Init();
   MX_TIM16_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+
+  // Start ADC
   HAL_ADC_Start(&hadc1);
+
+  // Start Timer PWM Generation
   HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim15, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_4);
+
+  // Initialize and zero out Gyro/Accel chips
+  MPU_6050_Init();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  int throttle_pwm = 80;
-  int roll_pwm = 0;
-  int pitch_pwm = 0;
-  int yaw_pwm = 0;
-  //HAL_Delay(5000);
+  // Initialize PWM values for motor control
+  Remote_Roll_Command = 600;
+  Remote_Pitch_Command = 600;
+  Remote_Yaw_Command = 600;
+  int STM_Throttle_PWM = 80;
+  int STM_Roll_PWM = 0;
+  int STM_Pitch_PWM = 0;
+  int STM_Yaw_PWM = 0;
+
   while (1)
   {
 	/**************************************************/
@@ -157,31 +172,32 @@ int main(void)
 	BR_Motor = 0;
 
 	/**************************************************/
-	/**************** Throttle Control ****************/
+	/**************** Remote_Throttle_Command Control ****************/
 	/**************************************************/
 
-	if (Throttle < 400)
+	if (Remote_Throttle_Command < 400)
 	{
-		Throttle = 400;
+		Remote_Throttle_Command = 400;
 	}
-	throttle_pwm = Min_Throttle + ((Throttle - 400) / 5.7);
-	FL_Motor = throttle_pwm;
-	FR_Motor = throttle_pwm;
-	BL_Motor = throttle_pwm;
-	BR_Motor = throttle_pwm;
+	STM_Throttle_PWM = Min_Throttle + ((Remote_Throttle_Command - 400) / 5.7);
+	FL_Motor = STM_Throttle_PWM;
+	FR_Motor = STM_Throttle_PWM;
+	BL_Motor = STM_Throttle_PWM;
+	BR_Motor = STM_Throttle_PWM;
 
 	/**************************************************/
-	/****************** Roll Control ******************/
+	/****************** Remote_Roll_Command Control ******************/
 	/**************************************************/
 
-	roll_pwm = ((Roll - 400) / 5.7);
-	if(roll_pwm > 40)
+	STM_Roll_PWM = ((Remote_Roll_Command - 400) / 5.7);
+	if(STM_Roll_PWM > 40)
 	{
-		roll_pwm -= 40;
-		if(throttle_pwm + roll_pwm < Max_Throttle)
+		int Temp_Motor_Roll_PWM = STM_Roll_PWM - 40;
+
+		if(STM_Throttle_PWM + Temp_Motor_Roll_PWM < Max_Throttle)
 		{
-			FL_Motor += (roll_pwm/2);
-			BL_Motor += (roll_pwm/2);
+			FL_Motor += (Temp_Motor_Roll_PWM/2);
+			BL_Motor += (Temp_Motor_Roll_PWM/2);
 		}
 		else
 		{
@@ -189,14 +205,15 @@ int main(void)
 			BL_Motor = Max_Throttle;
 		}
 	}
-	else if(roll_pwm < 30)
+	else if(STM_Roll_PWM < 30)
 	{
-		roll_pwm -= 30;
-		roll_pwm *= -1;
-		if(throttle_pwm + roll_pwm < Max_Throttle)
+		int Temp_Motor_Roll_PWM = STM_Roll_PWM - 30;
+		Temp_Motor_Roll_PWM *= -1;
+
+		if(STM_Throttle_PWM + Temp_Motor_Roll_PWM < Max_Throttle)
 		{
-			FR_Motor += (roll_pwm/2);
-			BR_Motor += (roll_pwm/2);
+			FR_Motor += (Temp_Motor_Roll_PWM/2);
+			BR_Motor += (Temp_Motor_Roll_PWM/2);
 		}
 		else
 		{
@@ -208,17 +225,18 @@ int main(void)
 	}
 
 	/**************************************************/
-	/****************** Pitch Control *****************/
+	/****************** Remote_Pitch_Command Control *****************/
 	/**************************************************/
 
-	pitch_pwm = ((Pitch - 400) / 5.7);
-	if(pitch_pwm > 40)
+	STM_Pitch_PWM = ((Remote_Pitch_Command - 400) / 5.7);
+	if(STM_Pitch_PWM > 40)
 	{
-		pitch_pwm -= 40;
-		if(throttle_pwm + pitch_pwm < Max_Throttle)
+		int Temp_Motor_Pitch_PWM = STM_Pitch_PWM - 40;
+
+		if(STM_Throttle_PWM + Temp_Motor_Pitch_PWM < Max_Throttle)
 		{
-			BL_Motor += (pitch_pwm/2);
-			BR_Motor += (pitch_pwm/2);
+			BL_Motor += (Temp_Motor_Pitch_PWM/2);
+			BR_Motor += (Temp_Motor_Pitch_PWM/2);
 		}
 		else
 		{
@@ -226,14 +244,15 @@ int main(void)
 			BR_Motor = Max_Throttle;
 		}
 	}
-	else if(pitch_pwm < 30)
+	else if(STM_Pitch_PWM < 30)
 	{
-		pitch_pwm -= 30;
-		pitch_pwm *= -1;
-		if(throttle_pwm + pitch_pwm < Max_Throttle)
+		int Temp_Motor_Pitch_PWM = STM_Pitch_PWM - 30;
+		Temp_Motor_Pitch_PWM *= -1;
+
+		if(STM_Throttle_PWM + Temp_Motor_Pitch_PWM < Max_Throttle)
 		{
-			FL_Motor += (pitch_pwm/2);
-			FR_Motor += (pitch_pwm/2);
+			FL_Motor += (Temp_Motor_Pitch_PWM/2);
+			FR_Motor += (Temp_Motor_Pitch_PWM/2);
 		}
 		else
 		{
@@ -244,16 +263,16 @@ int main(void)
 	}
 
 	/**************************************************/
-	/******************* Yaw Control ******************/
+	/******************* Remote_Yaw_Command Control ******************/
 	/**************************************************/
-	/*yaw_pwm = ((Yaw - 400) / 5.7);
-	if(yaw_pwm > 40)
+	STM_Yaw_PWM = ((Remote_Yaw_Command - 400) / 5.7);
+	if(STM_Yaw_PWM > 40)
 	{
-		yaw_pwm -= 40;
-		if(throttle_pwm + yaw_pwm < Max_Throttle)
+		STM_Yaw_PWM -= 40;
+		if(STM_Throttle_PWM + STM_Yaw_PWM < Max_Throttle)
 		{
-			BL_Motor += yaw_pwm;
-			FR_Motor += yaw_pwm;
+			BL_Motor += STM_Yaw_PWM;
+			FR_Motor += STM_Yaw_PWM;
 		}
 		else
 		{
@@ -261,14 +280,14 @@ int main(void)
 			FR_Motor = Max_Throttle;
 		}
 	}
-	else if(yaw_pwm < 30)
+	else if(STM_Yaw_PWM < 30)
 	{
-		yaw_pwm -= 30;
-		yaw_pwm *= -1;
-		if(throttle_pwm + yaw_pwm < Max_Throttle)
+		STM_Yaw_PWM -= 30;
+		STM_Yaw_PWM *= -1;
+		if(STM_Throttle_PWM + STM_Yaw_PWM < Max_Throttle)
 		{
-			FL_Motor += yaw_pwm;
-			BR_Motor += yaw_pwm;
+			FL_Motor += STM_Yaw_PWM;
+			BR_Motor += STM_Yaw_PWM;
 		}
 		else
 		{
@@ -276,7 +295,20 @@ int main(void)
 			BR_Motor = Max_Throttle;
 		}
 	}
-	*/
+
+	/**************************************************/
+	/********* Adjust Motor Values per Accel **********/
+	/**************************************************/
+
+	if (30 < STM_Roll_PWM && STM_Roll_PWM < 40 && STM_Throttle_PWM > 90)
+	{
+		Motor_Adjust_Roll();
+	}
+	if (30 < STM_Pitch_PWM && STM_Pitch_PWM < 40 && STM_Throttle_PWM > 90)
+	{
+		Motor_Adjust_Pitch();
+	}
+
 	/**************************************************/
 	/**************** Set Motor Values ****************/
 	/**************************************************/
@@ -287,16 +319,10 @@ int main(void)
 	TIM15->CCR2 = BL_Motor;
 
 
-	// Convert to string and print
-	sprintf(msg, "%i   %i   %i  %i  %i  %i  %i  %i\r\n", Throttle, pitch_pwm, Pitch, Yaw, FL_Motor, FR_Motor, BL_Motor, BR_Motor);
-	HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-    //sprintf(msg, "%lu\r\n", TIM16->CNT);
-	//HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY);
-
-
-	//TIM4->CCR1 = raw;
-	// Pretend we have to do something else for a while
-	//HAL_Delay(10);
+	// Convert to string and prints
+	Get_Pos();
+	//sprintf(msg, "FL: %i FR: %i BL: %i BR: %i Roll: %f.4 Pitch: %f.4\r\n", FL_Motor, FR_Motor, BL_Motor, BR_Motor, Positional_Roll, Positional_Pitch);
+	//HAL_UART_Transmit(&huart2, (uint8_t*)msg, strlen(msg), UART_DELAY);
 
     /* USER CODE END WHILE */
 
@@ -418,6 +444,54 @@ static void MX_ADC1_Init(void)
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
+
+}
+
+/**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.Timing = 0x10909CEC;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.OwnAddress2Masks = I2C_OA2_NOMASK;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Analogue filter
+  */
+  if (HAL_I2CEx_ConfigAnalogFilter(&hi2c1, I2C_ANALOGFILTER_ENABLE) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /** Configure Digital filter
+  */
+  if (HAL_I2CEx_ConfigDigitalFilter(&hi2c1, 0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
 
 }
 
@@ -838,29 +912,29 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PC0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  /*Configure GPIO pin : Pitch_PWM_IN_Pin */
+  GPIO_InitStruct.Pin = Pitch_PWM_IN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(Pitch_PWM_IN_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PC1 */
-  GPIO_InitStruct.Pin = GPIO_PIN_1;
+  /*Configure GPIO pin : Roll_PWM_IN_Pin */
+  GPIO_InitStruct.Pin = Roll_PWM_IN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+  HAL_GPIO_Init(Roll_PWM_IN_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PA4 */
-  GPIO_InitStruct.Pin = GPIO_PIN_4;
+  /*Configure GPIO pin : Yaw_PWM_IN_Pin */
+  GPIO_InitStruct.Pin = Yaw_PWM_IN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(Yaw_PWM_IN_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB0 */
-  GPIO_InitStruct.Pin = GPIO_PIN_0;
+  /*Configure GPIO pin : Throttle_PWM_IN_Pin */
+  GPIO_InitStruct.Pin = Throttle_PWM_IN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(Throttle_PWM_IN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA10 */
   GPIO_InitStruct.Pin = GPIO_PIN_10;
@@ -881,11 +955,7 @@ static void MX_GPIO_Init(void)
 // Callback: timer has rolled over
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
-  // Check which version of the timer triggered this callback and toggle LED
-  ///if (htim == &htim16)
-  //{
-  //  TIMER_COUNT += 1;
-  //}
+	return;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
@@ -897,51 +967,211 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 	}
 }
 
+void MPU_6050_Init(void)
+{
+	HAL_StatusTypeDef ret = HAL_ERROR;
+	uint8_t data = PM1_No_Reset;
+	ret = HAL_I2C_Mem_Write(&hi2c1, MPU_6050_ADDR, POWER_CONFIG_ADDR, I2C_MEMADD_SIZE_8BIT, &data, I2C_MEMADD_SIZE_8BIT, I2C_DELAY);
+	if (ret != HAL_OK)
+	{
+		HAL_UART_Transmit(&huart2, (uint8_t*)"\r\nError Initializing MPU_6050\r\n", strlen("\r\nError Initializing MPU_6050\r\n"), I2C_DELAY);
+	}
+	else
+	{
+		data = Gyro_500_Sens;
+		ret = HAL_I2C_Mem_Write(&hi2c1, MPU_6050_ADDR, GYRO_CONFIG_ADDR, I2C_MEMADD_SIZE_8BIT, &data, I2C_MEMADD_SIZE_8BIT, I2C_DELAY);
+		if (ret != HAL_OK)
+		{
+			HAL_UART_Transmit(&huart2, (uint8_t*)"\r\nError Initializing Gyro\r\n", strlen("\r\nError Initializing Gyro\r\n"), I2C_DELAY);
+		}
+		else
+		{
+			data = Accel_4g_Sens;
+			ret = HAL_I2C_Mem_Write(&hi2c1, MPU_6050_ADDR, ACCEL_CONFIG_ADDR, I2C_MEMADD_SIZE_8BIT, &data, I2C_MEMADD_SIZE_8BIT, I2C_DELAY);
+			if (ret != HAL_OK)
+			{
+				HAL_UART_Transmit(&huart2, (uint8_t*)"\r\nError Initializing Accel\r\n", strlen("\r\nError Initializing Accel\r\n"), I2C_DELAY);
+			}
+			else
+			{
+				HAL_UART_Transmit(&huart2, (uint8_t*)"\r\nInitialized MPU_6050!\r\n", strlen("\r\nInitialized MPU_6050!\r\n"), I2C_DELAY);
+			}
+		}
+	}
+
+	int x = 0;
+	AccelErrorX = 0;
+	AccelErrorY = 0;
+	AccelErrorZ = 0;
+	int16_t dAccX;
+	int16_t dAccY;
+	int16_t dAccZ;
+	while (x < Number_of_Calibrations)
+	{
+		HAL_I2C_Mem_Read(&hi2c1, MPU_6050_ADDR, ACCEL_ADDR, I2C_MEMADD_SIZE_8BIT, Accel_buffer_in, 6, I2C_DELAY);
+		dAccX = ((int16_t)Accel_buffer_in[0] << 8) | (Accel_buffer_in[1]);
+		dAccY = ((int16_t)Accel_buffer_in[2] << 8) | (Accel_buffer_in[3]);
+		dAccZ = ((int16_t)Accel_buffer_in[4] << 8) | (Accel_buffer_in[5]);
+
+		float AccX = dAccX / Accel_4g_LSB_Divide;
+		float AccY = dAccY / Accel_4g_LSB_Divide;
+		float AccZ = (dAccZ / Accel_4g_LSB_Divide) - 1;
+		AccelErrorX += AccX;
+		AccelErrorY += AccY;
+		AccelErrorZ += AccZ;
+		x++;
+	}
+
+	AccelErrorX = AccelErrorX / Number_of_Calibrations;
+	AccelErrorY = AccelErrorY / Number_of_Calibrations;
+	AccelErrorZ = AccelErrorZ / Number_of_Calibrations;
+	return;
+}
+
+void Get_Pos(void)
+{
+	HAL_I2C_Mem_Read(&hi2c1, MPU_6050_ADDR, ACCEL_ADDR, I2C_MEMADD_SIZE_8BIT, Accel_buffer_in, 6, I2C_DELAY);
+	int16_t dAccX = ((int16_t)Accel_buffer_in[0] << 8) | (Accel_buffer_in[1]);
+	int16_t dAccY = ((int16_t)Accel_buffer_in[2] << 8) | (Accel_buffer_in[3]);
+	int16_t dAccZ = ((int16_t)Accel_buffer_in[4] << 8) | (Accel_buffer_in[5]);
+
+	float AccX = (dAccX / Accel_4g_LSB_Divide) - AccelErrorX;
+	float AccY = (dAccY / Accel_4g_LSB_Divide) - AccelErrorY;
+	float AccZ = (dAccZ / Accel_4g_LSB_Divide) - AccelErrorZ;
+
+	Positional_Pitch = (atan(AccY / sqrt(pow(AccX, 2) + pow(AccZ, 2))) * 180 / M_PI);
+	Positional_Roll = (atan(-1 * AccX / sqrt(pow(AccY, 2) + pow(AccZ, 2))) * 180 / M_PI);
+
+	return;
+}
+
+void Motor_Adjust_Roll(void)
+{
+	/**************************************************/
+	/****************** Remote_Roll_Command Control ******************/
+	/**************************************************/
+
+	if(Positional_Roll > 2)
+	{
+		FL_Motor -= (Positional_Roll / Adujst_Value);
+		BL_Motor -= (Positional_Roll / Adujst_Value);
+
+		if (FL_Motor < Min_Throttle)
+		{
+			FL_Motor = Min_Throttle;
+		}
+		if (BL_Motor < Min_Throttle)
+		{
+			BL_Motor = Min_Throttle;
+		}
+
+	}
+	else if (Positional_Roll < -2)
+	{
+		FR_Motor += (Positional_Roll / Adujst_Value);
+		BR_Motor += (Positional_Roll / Adujst_Value);
+
+		if (FR_Motor < Min_Throttle)
+		{
+			FR_Motor = Min_Throttle;
+		}
+		if (BR_Motor < Min_Throttle)
+		{
+			BR_Motor = Min_Throttle;
+		}
+
+	}
+
+}
+
+void Motor_Adjust_Pitch(void)
+{
+
+	/**************************************************/
+	/****************** Remote_Pitch_Command Control *****************/
+	/**************************************************/
+
+	// Check if the pitch stick is centered
+	if(Positional_Pitch > 2)
+	{
+		FL_Motor -= (Positional_Pitch / Adujst_Value);
+		FR_Motor -= (Positional_Pitch / Adujst_Value);
+
+		// Check if the Front Left Motor is out of the Min throttle ranges
+		if (FL_Motor < Min_Throttle)
+		{
+			FL_Motor = Min_Throttle;
+		}
+		// Check if the Front Right Motor is out of the Min throttle ranges
+		if (FR_Motor < Min_Throttle)
+		{
+			FR_Motor = Min_Throttle;
+		}
+	}
+	if(Positional_Pitch < -2)
+	{
+		BL_Motor += (Positional_Pitch / Adujst_Value);
+		BR_Motor += (Positional_Pitch / Adujst_Value);
+
+		// Check if the Back Left Motor is out of the Min throttle ranges
+		if (BL_Motor < Min_Throttle)
+		{
+			BL_Motor = Min_Throttle;
+		}
+		// Check if the Back Right Motor is out of the Min throttle ranges
+		if (BR_Motor < Min_Throttle)
+		{
+			BR_Motor = Min_Throttle;
+		}
+	}
+}
+
 void Get_Pulses(void)
 {
 	TIM16->CNT = 0;
-	HAL_TIM_Base_Start(&htim16);
 	uint32_t time_count = TIM16->CNT;
-	Throttle = 0;
-	Roll = 0;
-	Pitch = 0;
-	Yaw = 0;
+	Remote_Throttle_Command = 0;
+	Remote_Roll_Command = 0;
+	Remote_Pitch_Command = 0;
+	Remote_Yaw_Command = 0;
 	while ((TIM16->CNT - time_count) < 2400)
 	{
-		if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_0))
+		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0))
 		{
-			Throttle += 1;
+			Remote_Throttle_Command += 1;
 		}
 		else
 		{
-			Throttle = Throttle;
+			Remote_Throttle_Command = Remote_Throttle_Command;
 		}
 		if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_1))
 		{
-			Roll += 1;
+			Remote_Roll_Command += 1;
 		}
 		else
 		{
-			Roll = Roll;
+			Remote_Roll_Command = Remote_Roll_Command;
 		}
-		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_0))
+		if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_0))
 		{
-			Pitch += 1;
+			Remote_Pitch_Command += 1;
 		}
 		else
 		{
-			Pitch = Pitch;
+			Remote_Pitch_Command = Remote_Pitch_Command;
 		}
 		if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_4))
 		{
-			Yaw += 1;
+			Remote_Yaw_Command += 1;
 		}
 		else
 		{
-			Yaw = Yaw;
+			Remote_Yaw_Command = Remote_Yaw_Command;
 		}
 	}
-	HAL_TIM_Base_Stop(&htim16);
+	//char message[100];
+	//sprintf(message, "Read Channel\r\n");
+	//HAL_UART_Transmit(&huart2, (uint8_t*)message, strlen(message), UART_DELAY);
 
 }
 

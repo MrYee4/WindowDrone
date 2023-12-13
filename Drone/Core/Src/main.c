@@ -118,16 +118,60 @@ int main(void)
   while (1)
     {
 	  //uint8_t data[256];
-	  //Get_Pos();
-	  ///sprintf((char*)data, "Roll: %f Pitch: %f Yaw: %f\n", roll, pitch, yaw);
-	  //HAL_UART_Transmit(&huart2, data, strlen((char*)data), I2C_DELAY);
+	  	//Get_Pos();
+	  	///sprintf((char*)data, "Roll: %f Pitch: %f Yaw: %f\n", roll, pitch, yaw);
+	  	//HAL_UART_Transmit(&huart2, data, strlen((char*)data), I2C_DELAY);
 
-	  MPU_Get_Gyro();
+	  	HAL_I2C_Mem_Read(&hi2c1, MPU_6050_ADDR, ACCEL_ADDR, I2C_MEMADD_SIZE_8BIT, buf, 6, I2C_DELAY);
 
-	  HAL_Delay(.5 * 1000); //(sec * 1000)
-    /* USER CODE END WHILE */
+	  	AccX = ((int16_t)buf[0] << 8) | (buf[1]);
+	  	AccY = ((int16_t)buf[2] << 8) | (buf[3]);
+	  	AccZ = ((int16_t)buf[4] << 8) | (buf[5]);
 
-    /* USER CODE BEGIN 3 */
+	  	AccX = AccX / 8192.0;
+	  	AccY = AccY / 8192.0;
+	  	AccZ = AccZ / 8192.0;
+
+	  	// Calculating Roll and Pitch from the accelerometer data
+	  	accAngleX = (atan(AccY / sqrt(pow(AccX, 2) + pow(AccZ, 2))) * 180 / M_PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
+	  	accAngleY = (atan(-1 * AccX / sqrt(pow(AccY, 2) + pow(AccZ, 2))) * 180 / M_PI) + 1.58; // AccErrorY ~(-1.58)
+
+	  	// === Read gyroscope data === //
+	  	previousTime = currentTime;        // Previous time is stored before the actual time read
+	  	currentTime = TIM2->CNT;       // Current time actual time read
+	  	currentTime = currentTime / 8;
+	  	elapsedTime = (currentTime - previousTime) / 1000; // Divide by 1000 to get seconds
+
+	  	HAL_I2C_Mem_Read(&hi2c1, MPU_6050_ADDR, GYRO_ADDR, I2C_MEMADD_SIZE_8BIT, buf, 6, I2C_DELAY);
+	  	GyroX = ((int16_t)buf[0] << 8) | (buf[1]);
+	  	GyroY = ((int16_t)buf[2] << 8) | (buf[3]);
+	  	GyroZ = ((int16_t)buf[4] << 8) | (buf[5]);
+
+	  	GyroX = GyroX / 65.5;
+	  	GyroY = GyroY / 65.5;
+	  	GyroZ = GyroZ / 65.5;
+
+	  	// Correct the outputs with the calculated error values
+	  	GyroX = GyroX + 0.56; // GyroErrorX ~(-0.56)
+	  	GyroY = GyroY - 2; // GyroErrorY ~(2)
+	  	GyroZ = GyroZ + 0.79; // GyroErrorZ ~ (-0.8)
+
+	  	// Currently the raw values are in degrees per seconds, deg/s, so we need to multiply by sendonds (s) to get the angle in degrees
+	  	gyroAngleX = gyroAngleX + GyroX * elapsedTime; // deg/s * s = deg
+	  	gyroAngleY = gyroAngleY + GyroY * elapsedTime;
+	  	yaw =  yaw + GyroZ * elapsedTime;
+	  	// Complementary filter - combine acceleromter and gyro angle values
+	  	roll = 0.96 * gyroAngleX + 0.04 * accAngleX;
+	  	pitch = 0.96 * gyroAngleY + 0.04 * accAngleY;
+
+	  	uint8_t data[256];
+	  	sprintf((char*)data, "Roll: %f Pitch: %f Yaw: %f\n", roll, pitch, yaw);
+	  	HAL_UART_Transmit(&huart2, data, strlen((char*)data), I2C_DELAY);
+
+	  	HAL_Delay(.5 * 1000); //(sec * 1000)
+	      /* USER CODE END WHILE */
+
+	      /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
@@ -472,8 +516,8 @@ void Get_Pos(void)
 	roll = 0.96 * gyroAngleX + 0.04 * accAngleX;
 	pitch = 0.96 * gyroAngleY + 0.04 * accAngleY;
 
-	char data[256];
-	sprintf((char*)data, "Acell X: %f Y: %f Z: %f\nGyroscope X: %f Y: %f Z: %f\r\nMilli: %f\r\n", AccX, AccY, AccZ, GyroX, GyroY, GyroZ, elapsedTime);
+	char data[512];
+	sprintf((char*)data, "Acell X: %f Y: %f Z: %f Gyroscope X: %f Y: %f Z: %f Milli: %f\r\n", AccX, AccY, AccZ, GyroX, GyroY, GyroZ, elapsedTime);
 	HAL_UART_Transmit(&huart2, data, strlen((char*)data), I2C_DELAY);
 
 	return;
